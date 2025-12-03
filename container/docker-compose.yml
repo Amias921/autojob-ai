@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Frontend - Next.js
+  frontend:
+    build:
+      context: ../src/frontend
+      dockerfile: ../../container/frontend/Dockerfile
+    ports:
+      - "3005:3000"
+    volumes:
+      - ../src/frontend:/app
+      - /app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8005
+    networks:
+      - app-network
+    depends_on:
+      - backend
+
+  # Backend - FastAPI
+  backend:
+    build:
+      context: ../src/backend
+      dockerfile: ../../container/backend/Dockerfile
+    ports:
+      - "8005:8000"
+    volumes:
+      - ../src/backend:/app
+      - ../data/resumes:/app/data/resumes
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/job_db
+      - OLLAMA_URL=http://ollama:11434
+    networks:
+      - app-network
+    depends_on:
+      - db
+      - ollama
+
+  # Database - PostgreSQL
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"
+    volumes:
+      - ../data/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=job_db
+    networks:
+      - app-network
+
+  # Automation - N8N
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5679:5678"
+    volumes:
+      - ../data/n8n:/home/node/.n8n
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin
+    networks:
+      - app-network
+    depends_on:
+      - db
+
+  # AI - Ollama
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11435:11434"
+    volumes:
+      - ../data/ollama:/root/.ollama
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+
+networks:
+  app-network:
+    driver: bridge
