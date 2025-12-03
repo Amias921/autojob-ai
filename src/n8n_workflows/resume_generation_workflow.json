@@ -1,0 +1,156 @@
+{
+  "name": "Resume Generation Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "resume-generation",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ae2974e7-bb70-4c11-add8-f8cb3da963b6",
+      "name": "Webhook",
+      "webhookId": "5cd9fcea-70cb-435d-b806-8177949f31cd"
+    },
+    {
+      "parameters": {
+        "url": "=http://backend:8000/jobs/{{ $json.job_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a9c56799-ede7-4063-a2e2-3020d3d5eadc",
+      "name": "Get Job Details"
+    },
+    {
+      "parameters": {
+        "url": "http://backend:8000/resumes/{{ $node['Webhook'].json.body.resume_id }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        416,
+        0
+      ],
+      "id": "c35dfc4a-4553-4846-9338-3573d61636cd",
+      "name": "Get Resume"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/applications/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"job_id\": {{ $node['Webhook'].json.body.job_id }},\n  \"resume_id\": {{ $node['Webhook'].json.body.resume_id }},\n  \"tailored_content\": {{ $json.response }},\n  \"status\": \"Generated\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        832,
+        0
+      ],
+      "id": "dc963fa4-57e0-41d3-8248-415e15e43211",
+      "name": "Save Application"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from previous nodes\nconst webhookData = $node['Webhook'].json.body;\nconst jobData = $node['Get Job Details'].json;\nconst resumeData = $node['Get Resume'].json;\n\n// Extract key info (limited to avoid timeout)\nconst resumeSnippet = resumeData.content ? resumeData.content.substring(0, 800) : \"No resume\";\nconst jobSnippet = jobData.description ? jobData.description.substring(0, 600) : jobData.title;\n\n// Prompt for FULL one-page resume\nconst prompt = `Create a professional one-page resume for this job:\n\nJOB: ${jobData.title} at ${jobData.company}\nRequirements: ${jobSnippet}\n\nBASE RESUME INFO: ${resumeSnippet}\n\nGenerate a complete resume with these sections:\n1. Professional Summary (2-3 lines)\n2. Core Skills (6-8 bullet points)\n3. Work Experience (2-3 positions with achievements)\n4. Education\n5. Certifications (if applicable)\n\nFocus on keywords from the job description. Keep it to one page. Be specific and quantify achievements.\n\nTAILORED RESUME:`;\n\n// Make request with TinyLlama\nconst response = await this.helpers.request({\n  method: 'POST',\n  url: 'http://ollama:11434/api/generate',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: {\n    model: 'tinyllama',\n    prompt: prompt,\n    stream: false,\n    options: {\n      num_predict: 800,  // Full resume needs more tokens\n      temperature: 0.7,\n      top_p: 0.9\n    }\n  },\n  json: true,\n  timeout: 60000  // 1 minute\n});\n\nreturn { json: response };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "cfbb83b4-2c4d-422c-99b0-7b3e66b56109",
+      "name": "Generate Tailored"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Job Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Details": {
+      "main": [
+        [
+          {
+            "node": "Get Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Resume": {
+      "main": [
+        [
+          {
+            "node": "Generate Tailored",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Application": {
+      "main": [
+        []
+      ]
+    },
+    "Generate Tailored": {
+      "main": [
+        [
+          {
+            "node": "Save Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Los_Angeles",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "aa18eca0-02d6-4ad9-a23e-3ed38c963fbd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "69e17d47a0a0812626c6f130fc41efd95e7d6a6cd9af6c5affecc70808f11371"
+  },
+  "id": "u3S9EX6iWl7QX8OK",
+  "tags": []
+}
