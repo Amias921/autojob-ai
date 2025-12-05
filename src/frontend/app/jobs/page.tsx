@@ -27,6 +27,9 @@ export default function JobsPage() {
     const [selectedResume, setSelectedResume] = useState<number | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [expandedJob, setExpandedJob] = useState<number | null>(null);
+    const [searching, setSearching] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [searchLocation, setSearchLocation] = useState('Remote');
 
 
     useEffect(() => {
@@ -70,14 +73,75 @@ export default function JobsPage() {
         setSuccessMessage(null);
 
         try {
-            const result = await generateTailoredResume(selectedResume, jobId);
-            setSuccessMessage('Resume generated successfully! Check the Applications page.');
+            // Call N8N webhook directly instead of backend
+            const response = await fetch('http://localhost:5679/webhook/resume-generation', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    job_id: jobId,
+                    resume_id: selectedResume
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to trigger workflow');
+            }
+
+            setSuccessMessage('✅ Resume generated successfully! Check the Applications page.');
+
+            // Auto-hide success message after 5 seconds
             setTimeout(() => setSuccessMessage(null), 5000);
+
         } catch (err) {
-            setError('Failed to generate resume. Please try again.');
+            setError('Failed to generate resume. Make sure N8N is running on port 5679.');
             console.error(err);
         } finally {
             setGenerating(null);
+        }
+    }
+
+    async function searchJobs() {
+        if (!searchTerm.trim()) {
+            setError('Please enter a search term');
+            return;
+        }
+
+        setSearching(true);
+        setError(null);
+        setSuccessMessage(null);
+
+        try {
+            const response = await fetch('http://localhost:8005/jobs/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    search_term: searchTerm,
+                    location: searchLocation,
+                    results_wanted: 10
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Search failed');
+            }
+
+            const result = await response.json();
+            setSuccessMessage(`✅ ${result.message}`);
+
+            // Reload jobs to show new results
+            await loadJobs();
+
+            setTimeout(() => setSuccessMessage(null), 5000);
+
+        } catch (err) {
+            setError('Job search failed. Please try again.');
+            console.error(err);
+        } finally {
+            setSearching(false);
         }
     }
 
@@ -110,6 +174,53 @@ export default function JobsPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                         Refresh
+                    </button>
+                </div>
+            </div>
+
+            {/* Job Search Form */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <svg className="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Search for Jobs
+                </h2>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <input
+                        type="text"
+                        placeholder="Job title or keywords (e.g., Software Engineer)"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && searchJobs()}
+                        className="flex-1 rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2"
+                    />
+                    <input
+                        type="text"
+                        placeholder="Location (e.g., Remote, New York)"
+                        value={searchLocation}
+                        onChange={(e) => setSearchLocation(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && searchJobs()}
+                        className="w-full sm:w-64 rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2"
+                    />
+                    <button
+                        onClick={searchJobs}
+                        disabled={searching}
+                        className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors duration-200 font-medium shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
+                    >
+                        {searching ? (
+                            <>
+                                <LoadingSpinner size="sm" />
+                                <span>Searching...</span>
+                            </>
+                        ) : (
+                            <>
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                Search Jobs
+                            </>
+                        )}
                     </button>
                 </div>
             </div>

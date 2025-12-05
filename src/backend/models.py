@@ -38,6 +38,7 @@ class Application(Base):
     resume_id = Column(Integer, ForeignKey("resumes.id"))
     status = Column(String, default="Draft") # Draft, Generated, Applied, Rejected
     generated_content = Column(Text) # The tailored resume content
+    pdf_path = Column(String, nullable=True) # Path to generated PDF
     created_at = Column(DateTime, default=datetime.utcnow)
     
     job = relationship("JobPosting")

@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from models import Resume, JobPosting, Application
 from database import get_db
 from ai_service import generate_tailored_resume
+from pdf_generator import generate_resume_pdf
 from typing import Optional
+import os
+import uuid
 
 class ApplicationCreate(BaseModel):
     job_id: int
@@ -127,4 +131,71 @@ def list_applications(skip: int = 0, limit: int = 100, db: Session = Depends(get
         }
         for app in apps
     ]
+
+
+@router.post("/{application_id}/generate-pdf", response_model=dict)
+def generate_application_pdf(
+    application_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a PDF for an existing application.
+    """
+    # Get the application
+    app = db.query(Application).filter(Application.id == application_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    
+    if not app.generated_content:
+        raise HTTPException(status_code=400, detail="No resume content to generate PDF from")
+    
+    try:
+        # Create PDFs directory if it doesn't exist
+        pdf_dir = "/app/data/pdfs"
+        os.makedirs(pdf_dir, exist_ok=True)
+        
+        # Generate unique filename
+        filename = f"resume_{app.id}_{uuid.uuid4().hex[:8]}.pdf"
+        pdf_path = os.path.join(pdf_dir, filename)
+        
+        # Generate the PDF
+        generate_resume_pdf(app.generated_content, pdf_path)
+        
+        # Update application with PDF path
+        app.pdf_path = pdf_path
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": "PDF generated successfully",
+            "pdf_path": pdf_path,
+            "application_id": app.id
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+
+@router.get("/{application_id}/download-pdf")
+def download_application_pdf(
+    application_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Download the PDF for an application.
+    """
+    # Get the application
+    app = db.query(Application).filter(Application.id == application_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    
+    if not app.pdf_path or not os.path.exists(app.pdf_path):
+        raise HTTPException(status_code=404, detail="PDF not found. Generate it first.")
+    
+    # Return the PDF file
+    return FileResponse(
+        app.pdf_path,
+        media_type="application/pdf",
+        filename=f"resume_application_{app.id}.pdf"
+    )
 

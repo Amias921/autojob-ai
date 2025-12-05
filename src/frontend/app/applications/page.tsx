@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ErrorMessage from '@/components/ErrorMessage';
+import ResumeDisplay from '@/components/ResumeDisplay';
 import { fetchApplications, fetchJobDetails } from '@/lib/api';
 
 interface Application {
@@ -69,6 +70,73 @@ export default function ApplicationsPage() {
         } else {
             setExpandedApp(app.id);
             await loadJobDetails(app.job_id);
+        }
+    }
+
+    function printResume(content: string) {
+        // Create a new window with only the resume
+        const printWindow = window.open('', '_blank', 'width=850,height=1100');
+        if (!printWindow) return;
+
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Resume</title>
+                <style>
+                    body {
+                        font-family: Georgia, 'Times New Roman', serif;
+                        color: #1a1a1a;
+                        line-height: 1.6;
+                        padding: 0.5in 0.75in;
+                        margin: 0;
+                    }
+                    @media print {
+                        body { padding: 0.5in 0.75in; }
+                    }
+                    pre {
+                        white-space: pre-wrap;
+                        font-family: Georgia, 'Times New Roman', serif;
+                        font-size: 13px;
+                        margin: 0;
+                    }
+                </style>
+            </head>
+            <body>
+                <pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+
+        // Wait a moment for content to load, then print
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+    }
+
+    async function downloadPDF(applicationId: number) {
+        try {
+            // Download the PDF
+            const response = await fetch(`http://localhost:8005/applications/${applicationId}/download-pdf`);
+
+            if (!response.ok) {
+                throw new Error('PDF not found or not generated yet');
+            }
+
+            // Create a blob from the response
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `resume_application_${applicationId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error('Failed to download PDF:', error);
+            alert('PDF not available. Try generating it from N8N workflow first.');
         }
     }
 
@@ -210,9 +278,31 @@ export default function ApplicationsPage() {
                                                                 </div>
                                                                 {app.generated_content && (
                                                                     <div>
-                                                                        <h4 className="text-sm font-semibold text-slate-900 mb-2">Tailored Resume:</h4>
-                                                                        <div className="bg-white p-4 rounded-lg border border-slate-200">
-                                                                            <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{app.generated_content}</pre>
+                                                                        <div className="flex justify-between items-center mb-2">
+                                                                            <h4 className="text-sm font-semibold text-slate-900">Tailored Resume:</h4>
+                                                                            <div className="flex gap-2">
+                                                                                <button
+                                                                                    onClick={() => printResume(app.generated_content || '')}
+                                                                                    className="text-indigo-600 hover:text-indigo-900 text-sm font-medium flex items-center gap-1"
+                                                                                >
+                                                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                                                                                    </svg>
+                                                                                    Print
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => downloadPDF(app.id)}
+                                                                                    className="text-green-600 hover:text-green-900 text-sm font-medium flex items-center gap-1"
+                                                                                >
+                                                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                                                    </svg>
+                                                                                    Download PDF
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                                                            <ResumeDisplay content={app.generated_content} />
                                                                         </div>
                                                                     </div>
                                                                 )}
