@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ErrorMessage from '@/components/ErrorMessage';
 import { fetchJobs, fetchResumes, generateTailoredResume } from '@/lib/api';
+import ModelSelector from '@/components/ModelSelector';
 
 interface Job {
     id: number;
@@ -30,6 +31,7 @@ export default function JobsPage() {
     const [searching, setSearching] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [searchLocation, setSearchLocation] = useState('Remote');
+    const [selectedModel, setSelectedModel] = useState<string>('llama3');
 
 
     useEffect(() => {
@@ -81,7 +83,8 @@ export default function JobsPage() {
                 },
                 body: JSON.stringify({
                     job_id: jobId,
-                    resume_id: selectedResume
+                    resume_id: selectedResume,
+                    model: selectedModel
                 })
             });
 
@@ -154,17 +157,24 @@ export default function JobsPage() {
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                     {resumes.length > 0 && (
-                        <div className="relative">
-                            <select
-                                value={selectedResume || ''}
-                                onChange={(e) => setSelectedResume(Number(e.target.value))}
-                                className="block w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 pr-8 bg-white"
-                            >
-                                {resumes.map(r => (
-                                    <option key={r.id} value={r.id}>{r.name}</option>
-                                ))}
-                            </select>
-                        </div>
+                        <>
+                            <div className="relative">
+                                <select
+                                    value={selectedResume || ''}
+                                    onChange={(e) => setSelectedResume(Number(e.target.value))}
+                                    className="block w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 pr-8 bg-white"
+                                >
+                                    {resumes.map(r => (
+                                        <option key={r.id} value={r.id}>{r.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <ModelSelector
+                                selectedModel={selectedModel}
+                                onModelChange={setSelectedModel}
+                                className="w-full sm:w-64"
+                            />
+                        </>
                     )}
                     <button
                         onClick={loadJobs}

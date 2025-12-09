@@ -26,8 +26,13 @@ export async function uploadResume(file: File, name: string) {
     return res.json();
 }
 
-export async function generateTailoredResume(resumeId: number, jobId: number) {
-    const res = await fetch(`${API_URL}/applications/generate?resume_id=${resumeId}&job_id=${jobId}`, {
+export async function generateTailoredResume(resumeId: number, jobId: number, model?: string) {
+    let url = `${API_URL}/applications/generate?resume_id=${resumeId}&job_id=${jobId}`;
+    if (model) {
+        url += `&model=${encodeURIComponent(model)}`;
+    }
+
+    const res = await fetch(url, {
         method: 'POST',
     });
 
@@ -59,6 +64,20 @@ export async function deleteResume(resumeId: number) {
         method: 'DELETE',
     });
     if (!res.ok) throw new Error('Failed to delete resume');
+    return res.json();
+}
+
+export async function getAvailableModels() {
+    const res = await fetch(`${API_URL}/applications/models`);
+    if (!res.ok) throw new Error('Failed to fetch models');
+    return res.json();
+}
+
+export async function analyzeATS(applicationId: number) {
+    const res = await fetch(`${API_URL}/applications/${applicationId}/analyze-ats`, {
+        method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to analyze ATS');
     return res.json();
 }
 

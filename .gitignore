@@ -34,3 +34,6 @@ build/
 # Logs
 *.log
 npm-debug.log*
+
+# Agent artifacts and troubleshooting guides
+.gemini/

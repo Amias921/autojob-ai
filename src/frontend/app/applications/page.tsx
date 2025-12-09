@@ -4,6 +4,8 @@ import React, { useEffect, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ErrorMessage from '@/components/ErrorMessage';
 import ResumeDisplay from '@/components/ResumeDisplay';
+import ATSScoreBadge from '@/components/ATSScoreBadge';
+import ATSFeedback from '@/components/ATSFeedback';
 import { fetchApplications, fetchJobDetails } from '@/lib/api';
 
 interface Application {
@@ -13,6 +15,13 @@ interface Application {
     status: string;
     created_at: string;
     generated_content?: string;
+    model_used?: string;
+    model_generation_time?: number;
+    model_tokens_used?: number;
+    ats_score?: number | null;
+    ats_grade?: string | null;
+    ats_feedback?: string | null;
+    ats_analyzed_at?: string | null;
 }
 
 interface JobDetails {
@@ -240,9 +249,14 @@ export default function ApplicationsPage() {
                                                     Resume #{app.resume_id}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(app.status)}`}>
-                                                        {app.status}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(app.status)}`}>
+                                                            {app.status}
+                                                        </span>
+                                                        {app.ats_score !== null && app.ats_score !== undefined && (
+                                                            <ATSScoreBadge score={app.ats_score} grade={app.ats_grade} size="sm" showLabel={false} />
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                                                     {new Date(app.created_at).toLocaleDateString()}
@@ -276,6 +290,74 @@ export default function ApplicationsPage() {
                                                                     <h4 className="text-sm font-semibold text-slate-900 mb-2">Job Description:</h4>
                                                                     <p className="text-sm text-slate-700 whitespace-pre-wrap">{job.description}</p>
                                                                 </div>
+
+                                                                {/* Model Metadata */}
+                                                                {(app.model_used || app.model_generation_time || app.model_tokens_used) && (
+                                                                    <div className="bg-white rounded-lg border border-slate-200 p-4">
+                                                                        <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                                                            <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                                                                            </svg>
+                                                                            AI Generation Metadata
+                                                                        </h4>
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                            {app.model_used && (
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-xs text-slate-500 mb-1">Model Used</span>
+                                                                                    <span className="inline-flex items-center w-fit px-2.5 py-1 rounded-md text-sm font-medium bg-indigo-100 text-indigo-800">
+                                                                                        {app.model_used}
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+                                                                            {app.model_generation_time !== undefined && app.model_generation_time !== null && (
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-xs text-slate-500 mb-1">Generation Time</span>
+                                                                                    <span className="text-sm font-medium text-slate-900">
+                                                                                        {app.model_generation_time}s
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+                                                                            {app.model_tokens_used && (
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-xs text-slate-500 mb-1">Tokens Used</span>
+                                                                                    <span className="text-sm font-medium text-slate-900">
+                                                                                        {app.model_tokens_used.toLocaleString()}
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* ATS Score & Feedback */}
+                                                                {app.ats_score !== null && app.ats_score !== undefined && (
+                                                                    <div className="bg-white rounded-lg border border-slate-200 p-4">
+                                                                        <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                                                            <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                            </svg>
+                                                                            ATS Score
+                                                                        </h4>
+                                                                        <div className="flex items-center gap-3">
+                                                                            <ATSScoreBadge score={app.ats_score} grade={app.ats_grade} size="lg" />
+                                                                            {app.ats_analyzed_at && (
+                                                                                <span className="text-xs text-slate-500">
+                                                                                    Analyzed {new Date(app.ats_analyzed_at).toLocaleString()}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* ATS Feedback */}
+                                                                {app.ats_feedback && (
+                                                                    <ATSFeedback
+                                                                        feedback={app.ats_feedback}
+                                                                        score={app.ats_score}
+                                                                        grade={app.ats_grade}
+                                                                    />
+                                                                )}
+
                                                                 {app.generated_content && (
                                                                     <div>
                                                                         <div className="flex justify-between items-center mb-2">

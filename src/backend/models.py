@@ -41,5 +41,16 @@ class Application(Base):
     pdf_path = Column(String, nullable=True) # Path to generated PDF
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    # Multi-model tracking
+    model_used = Column(String, nullable=True, default="llama3")  # AI model name
+    model_generation_time = Column(Integer, nullable=True)  # Generation time in seconds
+    model_tokens_used = Column(Integer, nullable=True)  # Number of tokens used
+    
+    # ATS Score tracking
+    ats_score = Column(Integer, nullable=True)  # Score 0-100
+    ats_grade = Column(String, nullable=True)  # excellent/good/fair/poor
+    ats_feedback = Column(Text, nullable=True)  # JSON string with suggestions
+    ats_analyzed_at = Column(DateTime, nullable=True)  # When analysis was performed
+    
     job = relationship("JobPosting")
     resume = relationship("Resume")

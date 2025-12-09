@@ -4,11 +4,13 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from models import Resume, JobPosting, Application
 from database import get_db
-from ai_service import generate_tailored_resume
+from ai_service import generate_tailored_resume, get_available_models
+from ats_service import get_ats_score
 from pdf_generator import generate_resume_pdf
 from typing import Optional
 import os
 import uuid
+import json
 
 class ApplicationCreate(BaseModel):
     job_id: int
@@ -25,10 +27,17 @@ router = APIRouter(
 async def generate_application(
     resume_id: int,
     job_id: int,
+    model: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
     Generate a tailored resume for a specific job posting using AI.
+    
+    Args:
+        resume_id: ID of the base resume to use
+        job_id: ID of the job posting to target
+        model: Optional AI model to use (defaults to llama3)
+        db: Database session
     """
     # Fetch the base resume
     resume = db.query(Resume).filter(Resume.id == resume_id).first()
@@ -46,7 +55,11 @@ async def generate_application(
     
     # Generate tailored resume using AI
     try:
-        tailored_content = generate_tailored_resume(resume_text, job.description)
+        tailored_content, metadata = generate_tailored_resume(
+            resume_text, 
+            job.description,
+            model_name=model
+        )
         
         # Create or update application record
         existing_app = db.query(Application).filter(
@@ -57,21 +70,45 @@ async def generate_application(
         if existing_app:
             existing_app.generated_content = tailored_content
             existing_app.status = "Generated"
+            existing_app.model_used = metadata["model_used"]
+            existing_app.model_generation_time = int(metadata["generation_time"])
+            existing_app.model_tokens_used = metadata["tokens_used"]
         else:
             new_app = Application(
                 job_id=job_id,
                 resume_id=resume_id,
                 generated_content=tailored_content,
-                status="Generated"
+                status="Generated",
+                model_used=metadata["model_used"],
+                model_generation_time=int(metadata["generation_time"]),
+                model_tokens_used=metadata["tokens_used"]
             )
             db.add(new_app)
         
         db.commit()
         
+        # Auto-run ATS analysis on generated content
+        try:
+            ats_result = get_ats_score(tailored_content)
+            app_to_update = existing_app if existing_app else new_app
+            app_to_update.ats_score = ats_result['score']
+            app_to_update.ats_grade = ats_result['grade']
+            app_to_update.ats_feedback = json.dumps({
+                'suggestions': ats_result.get('suggestions', []),
+                'strengths': ats_result.get('strengths', []),
+                'missing_keywords': ats_result.get('missing_keywords', [])
+            })
+            app_to_update.ats_analyzed_at = db.func.now()
+            db.commit()
+        except Exception as e:
+            print(f"Warning: ATS analysis failed: {e}")
+            # Continue even if ATS analysis fails
+        
         return {
             "status": "success",
-            "message": "Resume tailored successfully",
-            "tailored_resume": tailored_content[:500] + "..."  # Preview
+            "message": f"Resume tailored successfully using {metadata['model_used']}",
+            "tailored_resume": tailored_content[:500] + "...",  # Preview
+            "metadata": metadata
         }
         
     except Exception as e:
@@ -117,7 +154,7 @@ def create_application(
 @router.get("/", response_model=list)
 def list_applications(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """
-    List all applications.
+    List all applications with model and ATS metadata.
     """
     apps = db.query(Application).offset(skip).limit(limit).all()
     return [
@@ -127,7 +164,14 @@ def list_applications(skip: int = 0, limit: int = 100, db: Session = Depends(get
             "resume_id": app.resume_id,
             "status": app.status,
             "created_at": app.created_at,
-            "generated_content": app.generated_content
+            "generated_content": app.generated_content,
+            "model_used": app.model_used,
+            "model_generation_time": app.model_generation_time,
+            "model_tokens_used": app.model_tokens_used,
+            "ats_score": app.ats_score,
+            "ats_grade": app.ats_grade,
+            "ats_feedback": app.ats_feedback,
+            "ats_analyzed_at": app.ats_analyzed_at
         }
         for app in apps
     ]
@@ -198,4 +242,63 @@ def download_application_pdf(
         media_type="application/pdf",
         filename=f"resume_application_{app.id}.pdf"
     )
+
+
+@router.get("/models", response_model=dict)
+def get_models():
+    """
+    Get list of available AI models for resume generation.
+    """
+    return {
+        "status": "success",
+        "models": get_available_models()
+    }
+
+
+@router.post("/{application_id}/analyze-ats", response_model=dict)
+def analyze_ats_score(
+    application_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger ATS analysis for an existing application.
+    """
+    from datetime import datetime
+    
+    # Get the application
+    app = db.query(Application).filter(Application.id == application_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    
+    if not app.generated_content:
+        raise HTTPException(status_code=400, detail="No resume content to analyze")
+    
+    try:
+        # Run ATS analysis
+        ats_result = get_ats_score(app.generated_content)
+        
+        # Update application with ATS data
+        app.ats_score = ats_result['score']
+        app.ats_grade = ats_result['grade']
+        app.ats_feedback = json.dumps({
+            'suggestions': ats_result.get('suggestions', []),
+            'strengths': ats_result.get('strengths', []),
+            'missing_keywords': ats_result.get('missing_keywords', [])
+        })
+        app.ats_analyzed_at = datetime.utcnow()
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "ats_score": ats_result['score'],
+            "ats_grade": ats_result['grade'],
+            "suggestions": ats_result.get('suggestions', []),
+            "strengths": ats_result.get('strengths', []),
+            "missing_keywords": ats_result.get('missing_keywords', []),
+            "analyzed_at": ats_result['analyzed_at']
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to analyze ATS score: {str(e)}")
 
